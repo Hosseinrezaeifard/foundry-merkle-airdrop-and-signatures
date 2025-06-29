@@ -2,11 +2,18 @@
 
 pragma solidity ^0.8.20;
 
+import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+
 /*
  * @author: 0xError
  * @notice: This contract is a Merkle airdrop contract that allows you to airdrop tokens to a list of addresses
  */
 contract MerkleAirdrop {
+    using SafeERC20 for IERC20;
+    /* ============= ERRORS ============= */
+    error MerkleAirdrop__InvalidProof();
+
     /*
      * 1. We need to store a list of addresses which Some of them will be eligible for the airdrop
      * 2. But the for loop would be too expensive to find the eligible addresses, here's why
@@ -16,4 +23,43 @@ contract MerkleAirdrop {
      * 6. So we need to store the list of addresses in a Merkle tree
      * 7. And when someone tries to claim the airdrop, we need to check if they're eligible by checking if their address is in the Merkle tree
      */
+
+    /* ============= STATE VARIABLES ============= */
+    bytes32 private immutable i_merkleRoot;
+    IERC20 private immutable i_airdropToken;
+
+    /* ============= EVENTS ============= */
+    event AirdropClaimed(address indexed account, uint256 amount);
+
+    /* ============= CONSTRUCTOR ============= */
+    constructor(bytes32 merkleRoot, IERC20 airdropToken) {
+        i_merkleRoot = merkleRoot;
+        i_airdropToken = airdropToken;
+    }
+
+    /* ============= FUNCTIONS ============= */
+    /*
+     * @notice: This function is used to claim the airdrop
+     * @param account: The address of the account that is claiming the airdrop
+     * @param amount: The amount of tokens that the account is claiming
+     * @param merkleProof: The merkle proof of the account
+     */
+    function claim(
+        address account,
+        uint256 amount,
+        bytes32[] calldata merkleProof
+    ) external {
+        // Hash of the account and amount
+        bytes32 leaf = keccak256(
+            bytes.concat(keccak256(abi.encode(account, amount)))
+        );
+        // Verfiy the proof
+        if (!MerkleProof.verify(merkleProof, i_merkleRoot, leaf)) {
+            revert MerkleAirdrop__InvalidProof();
+        }
+
+        // Transfer the tokens to the account
+        i_airdropToken.safeTransfer(account, amount);
+        emit AirdropClaimed(account, amount);
+    }
 }
