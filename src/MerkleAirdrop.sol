@@ -13,6 +13,7 @@ contract MerkleAirdrop {
     using SafeERC20 for IERC20;
     /* ============= ERRORS ============= */
     error MerkleAirdrop__InvalidProof();
+    error MerkleAirdrop__AlreadyClaimed();
 
     /*
      * 1. We need to store a list of addresses which Some of them will be eligible for the airdrop
@@ -27,6 +28,7 @@ contract MerkleAirdrop {
     /* ============= STATE VARIABLES ============= */
     bytes32 private immutable i_merkleRoot;
     IERC20 private immutable i_airdropToken;
+    mapping(address claimer => bool claimed) private s_hasClaimed; // Track the addresses that have already claimed the airdrop
 
     /* ============= EVENTS ============= */
     event AirdropClaimed(address indexed account, uint256 amount);
@@ -49,6 +51,10 @@ contract MerkleAirdrop {
         uint256 amount,
         bytes32[] calldata merkleProof
     ) external {
+        // Check if the account has already claimed the airdrop
+        if (s_hasClaimed[account]) {
+            revert MerkleAirdrop__AlreadyClaimed();
+        }
         // Hash of the account and amount
         bytes32 leaf = keccak256(
             bytes.concat(keccak256(abi.encode(account, amount)))
@@ -57,7 +63,9 @@ contract MerkleAirdrop {
         if (!MerkleProof.verify(merkleProof, i_merkleRoot, leaf)) {
             revert MerkleAirdrop__InvalidProof();
         }
-
+        // we have to add the account to the mapping to prevent double claiming
+        // but notice that we need to do this before the transfer to prevent reentrancy attacks
+        s_hasClaimed[account] = true;
         // Transfer the tokens to the account
         i_airdropToken.safeTransfer(account, amount);
         emit AirdropClaimed(account, amount);
