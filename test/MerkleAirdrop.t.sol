@@ -6,8 +6,10 @@ import {Test, console} from "forge-std/Test.sol";
 import {MerkleAirdrop} from "../src/MerkleAirdrop.sol";
 import {ByteBuckToken} from "../src/ByteBuckToken.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ZkSyncChainChecker} from "../lib/foundry-devops/src/ZkSyncChainChecker.sol";
+import {DeployMerkleAirdrop} from "../script/DeployMerkleAirdrop.s.sol";
 
-contract MerkleAirdropTest is Test {
+contract MerkleAirdropTest is Test, ZkSyncChainChecker {
     MerkleAirdrop public airdrop;
     ByteBuckToken public token;
 
@@ -26,22 +28,23 @@ contract MerkleAirdropTest is Test {
     uint256 userPrivateKey;
 
     function setUp() public {
-        token = new ByteBuckToken();
-        airdrop = new MerkleAirdrop(MERKLE_ROOT, IERC20(address(token)));
-        token.mint(address(airdrop), INITIAL_SUPPLY);
+        if (!isZkSyncChain()) {
+            DeployMerkleAirdrop deployer = new DeployMerkleAirdrop();
+            (airdrop, token) = deployer.deployMerkleAirdrop();
+        } else {
+            token = new ByteBuckToken();
+            airdrop = new MerkleAirdrop(MERKLE_ROOT, IERC20(address(token)));
+            token.mint(token.owner(), INITIAL_SUPPLY);
+            token.transfer(address(airdrop), INITIAL_SUPPLY);
+        }
         (user, userPrivateKey) = makeAddrAndKey("user");
     }
 
     function testUsersCanClaim() public {
-        // console.log("user", user); => add this to generateInput.s.sol
         uint256 startingBalance = token.balanceOf(user);
-
         vm.prank(user);
         airdrop.claim(user, AMOUNT, PROOF);
-
         uint256 endingBalance = token.balanceOf(user);
-        console.log("startingBalance", startingBalance);
-        console.log("endingBalance", endingBalance);
         assertEq(endingBalance, startingBalance + AMOUNT);
     }
 }
